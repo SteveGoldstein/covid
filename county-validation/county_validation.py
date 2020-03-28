@@ -19,8 +19,11 @@ Island, WA, 1, 1, 3, 6, 6, 6, 7, 14, 16
 """
 import time
 import pandas as pd
+import numpy as np
 from datetime import datetime
 from pathlib import Path
+from itertools import accumulate
+import pdb
 
 here = Path(__file__).parent
 
@@ -31,6 +34,7 @@ out_path = Path(here / "../data/validation")
 def add_missing_date_cols(df, start="2020-01-21", end=None):
     fmt = "%Y-%m-%d"
     start = datetime.strptime(start, fmt)
+    last_date_w_data = datetime.date(datetime.strptime(df.columns[-1], fmt))
     if end:
         end = datetime.strptime(end, fmt)
     else:
@@ -40,7 +44,9 @@ def add_missing_date_cols(df, start="2020-01-21", end=None):
     ):
         dt_str = dt.strftime(fmt)
         if dt_str not in df.columns:
-            df.insert(d_i, dt_str, 0)
+            df.insert(d_i, dt_str, np.nan)
+        if dt < pd.to_datetime(last_date_w_data):
+            df[dt_str].fillna(0, inplace=True)
 
 
 def get_wide_df_from_1p3a():
@@ -61,17 +67,18 @@ def get_wide_df_from_1p3a():
     narrow["date"] = narrow["index"].apply(lambda x: x[2])
     narrow["index"] = narrow["index"].apply(lambda x: x[:2])
     narrow = narrow.set_index("index")
-    cases = narrow.pivot(columns="date", values="confirmed_cases")
+    cases = narrow.pivot(columns="date", values="confirmed_count")
     deaths = narrow.pivot(columns="date", values="death_count")
 
     # make sure we're not missing any cols, NANs -> 0
     # take advantage of df mutability
     for df in cases, deaths:
         add_missing_date_cols(df)
-        df.fillna(value=0, inplace=True)
 
     return (cases, deaths)
 
+def get_agg(df):
+    return df.cumsum(axis=1, skipna=False)
 
 def do_validation(ip3a, factsusa, cv_scraper):
     """
@@ -83,9 +90,18 @@ def do_validation(ip3a, factsusa, cv_scraper):
 
 def main():
     while True:
-        ip3a_cases = get_wide_df_from_1p3a()
-        ip3a_cases_2 = get_wide_df_from_1p3a()
-        ip3a_cases_3 = get_wide_df_from_1p3a()
+        (ip3a_cases, _) = get_wide_df_from_1p3a()
+        ip3a_cases_agg = get_agg(ip3a_cases)
+
+        (ip3a_cases_2, _) = get_wide_df_from_1p3a()
+        ip3a_cases_2.iloc[0,0] = ip3a_cases_2.iloc[0,0] + 1
+        ip3a_cases_2_agg = get_agg(ip3a_cases_2)
+
+        (ip3a_cases_3, _) = get_wide_df_from_1p3a()
+        ip3a_cases_3.iloc[0,1] = ip3a_cases_2.iloc[0,1] + 1
+        ip3a_cases_3.iloc[0,2] = ip3a_cases_2.iloc[0,2] + 1
+        ip3a_cases_3_agg = get_agg(ip3a_cases_3)
+
         do_validation(ip3a_cases, ip3a_cases_2, ip3a_cases_3)
 
         time.sleep(3600)
