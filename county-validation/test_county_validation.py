@@ -16,7 +16,7 @@ def test_do_validation():
     cases_3 = cases_2.copy()
     cases_3.iloc[0, 1] = cases_3.iloc[0, 1] + 1
 
-    cases, cases_valid = cv.do_validation([cases_1, cases_2, cases_3])
+    cases, cases_valid = cv.do_validation(cases_1, cases_2, cases_3)
 
     assert cases_2.iloc[0, 0] != cases_1.iloc[0, 0]
 
@@ -35,3 +35,12 @@ def test_reload_data():
         assert cv.timedelta(seconds=cv.UPDATE_FREQ) > (
             cv.datetime.now() - cv.datetime.fromtimestamp(pth.stat().st_mtime)
         )
+
+def test_do_ip3a_plus_usa_f():
+    # Fails, counties don't line up in name or number. 
+    cases_ip3a = cv.pd.read_csv(cv.CASES_FROM_1P3A, index_col = 0) 
+    cases_usa_f = cv.pd.read_csv(cv.CASES_FROM_USA_FACTS, index_col = 0) 
+    cases, valid_score = cv.do_validation(cases_ip3a, cases_usa_f)
+    assert cases.shape == cases_ip3a.shape
+
+

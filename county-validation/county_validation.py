@@ -32,15 +32,19 @@ validation_out_dir = Path(here / "../data/validation")
 raw_dir = validation_out_dir / "raw"
 
 CASES_FROM_1P3A = validation_out_dir / "cases_1P3A.csv"
+CASES_FROM_1P3A_AGG = validation_out_dir / "cases_1P3A_agg.csv"
 DEATHS_FROM_1P3A = validation_out_dir / "deaths_1P3A.csv"
+DEATHS_FROM_1P3A_AGG = validation_out_dir / "deaths_1P3A_agg.csv"
 RAW_1P3A = raw_dir / "raw_1P3A.csv"
 URL_1P3A = "https://instant.1point3acres.com/v1/api/coronavirus/us/cases?token=PFl0dpfo"
 
 CASES_FROM_USA_FACTS = validation_out_dir / "cases_usa_f.csv"
+CASES_FROM_USA_FACTS_AGG = validation_out_dir / "cases_usa_f_agg.csv"
 RAW_USA_F_CASES = raw_dir / "raw_usa_f_cases.csv"
 URL_USA_FACTS_CASES = "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv"
 
 DEATHS_FROM_USA_FACTS = validation_out_dir / "deaths_usa_f.csv"
+DEATHS_FROM_USA_FACTS_AGG = validation_out_dir / "deaths_usa_f_agg.csv"
 RAW_USA_F_DEATHS = raw_dir / "raw_usa_f_deaths.csv"
 URL_USA_FACTS_DEATHS = "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_deaths_usafacts.csv"
 
@@ -64,10 +68,12 @@ def reload_data():
 
 
 def transform_usa_facts(in_path, out_path):
+    assert "_agg" in out_path.name
     data = pd.read_csv(in_path, index_col=[1, 2]).drop(
         columns=["countyFIPS", "stateFIPS"]
     )
     data.to_csv(out_path)
+    get_inverse_agg(data).to_csv(Path("".join(out_path.name.split("_agg"))))
 
 
 def transform_1p3a_narrow_to_wide(in_path, _):
@@ -95,7 +101,9 @@ def transform_1p3a_narrow_to_wide(in_path, _):
         add_missing_date_cols(df)
 
     cases.to_csv(CASES_FROM_1P3A)
+    get_agg(cases).to_csv(CASES_FROM_1P3A_AGG)
     deaths.to_csv(DEATHS_FROM_1P3A)
+    get_agg(deaths).to_csv(DEATHS_FROM_1P3A_AGG)
 
 
 def add_missing_date_cols(df, start="2020-01-21", end=None):
@@ -120,6 +128,12 @@ def get_agg(df):
     return df.cumsum(axis=1, skipna=False)
 
 
+def get_inverse_agg(df):
+    df_inv_ag = df.diff(axis=1)
+    df_inv_ag.iloc[0, :] = df.iloc[0, :]
+    return df_inv_ag
+
+
 def get_mode_and_valid_score(*args):
     # all unique? use median. Else, use mode.
     if len(set(args)) == len(args):
@@ -130,7 +144,7 @@ def get_mode_and_valid_score(*args):
     return (my_mode, valid_score)
 
 
-def do_validation(cases_collection):
+def do_validation(*cases_collection):
     """stackoverflow.com/questions/42277400/apply-a-function-element-wise-to-two-dataframes
 
     m_and_v = np.vectorize(get_mode_and_valid_score)(cases_collection)
@@ -140,13 +154,21 @@ def do_validation(cases_collection):
     Didn't work, likely because my function returns a tuple, not a float.
     Going the clunky route for now. 
     """
-    shape = cases_collection[0].shape
+
     for df in cases_collection[1:]:
-        assert df.shape == shape, "df not shaped same, missing date?"
+        assert (
+            df.shape == cases_collection[0].shape
+        ), "df not shaped same, missing date?"
+        assert (
+            df.columns == cases_collection[0].columns
+        ).all(), "df not shaped same, missing date?"
+        assert (
+            df.index == cases_collection[0].index
+        ).all(), "df not shaped same, missing date?"
 
     cases = pd.DataFrame(np.nan, index=df.index, columns=df.columns)
     valid_score = cases.copy()
-
+    shape = cases_collection[0].shape
     for i in range(shape[0]):
         for j in range(shape[1]):
             args = [el.iloc[i, j] for el in cases_collection]
@@ -170,12 +192,12 @@ PATH_TO_URL = {
         "url": URL_1P3A,
         "transform": transform_1p3a_narrow_to_wide,
     },
-    CASES_FROM_USA_FACTS: {
+    CASES_FROM_USA_FACTS_AGG: {
         "raw": RAW_USA_F_CASES,
         "url": URL_USA_FACTS_CASES,
         "transform": transform_usa_facts,
     },
-    DEATHS_FROM_USA_FACTS: {
+    DEATHS_FROM_USA_FACTS_AGG: {
         "raw": RAW_USA_F_DEATHS,
         "url": URL_USA_FACTS_DEATHS,
         "transform": transform_usa_facts,
@@ -186,7 +208,9 @@ PATH_TO_URL = {
 def main():
     while True:
         reload_data()
-        # do_validation(ip3a_cases, ip3a_cases_2, ip3a_cases_3)
+        csvs = [CASES_FROM_1P3A, CASES_FROM_USA_FACTS]
+        cases_collection = [pd.read_csv(f) for f in csvs]
+        do_validation(*cases_collection)
 
         time.sleep(UPDATE_FREQ)
 
