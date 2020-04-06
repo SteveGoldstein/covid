@@ -1,4 +1,4 @@
-const {DeckGL, GeoJsonLayer, TextLayer, MapController} = deck;
+const {DeckGL, GeoJsonLayer, TextLayer} = deck;
 
 const COLOR_SCALE = [
     [240, 240, 240],
@@ -236,6 +236,51 @@ class GeodaProxy {
     }
 }
 
+const state_map = "states_update.geojson";
+const county_map = "counties_update.geojson";
+var map_variable = "confirmed_count";
+var choropleth_btn = document.getElementById("btn-nb");
+var lisa_btn = document.getElementById("btn-lisa");
+var data_btn = document.getElementById("select-data");
+
+var gda_proxy;
+var state_w = null;
+var county_w = null;
+
+var jsondata = {};
+var centroids = {};
+
+var select_map = null;
+var select_id = null;
+var select_date = null;
+var select_variable = null;
+var select_method = null;
+var show_labels = false;
+var select_state_id = -1;
+
+var dates;
+var confirmed_count_data = {};
+var death_count_data = {};
+var population_data = {};
+var fatality_data = {};
+var lisa_data = {};
+
+
+// functions
+var colorScale;
+var getFillColor;
+var getLineColor;
+
+const deckgl = new DeckGL({
+    mapboxApiAccessToken: 'pk.eyJ1IjoibGl4dW45MTAiLCJhIjoiY2locXMxcWFqMDAwenQ0bTFhaTZmbnRwaiJ9.VRNeNnyb96Eo-CorkJmIqg',
+    mapStyle: 'mapbox://styles/mapbox/dark-v9',
+    latitude: 41.850033,
+    longitude: -90.6500523,
+    zoom: 3,
+    maxZoom: 16,
+    pitch: 0,
+    layers: []
+});
 
 function loadGeoDa(url, evt) {
   if (gda_proxy.Has(url)) {
@@ -313,75 +358,6 @@ function parseData(data)
         }
     }
 }
-const state_map = "states_update.geojson";
-const county_map = "counties_update.geojson";
-var map_variable = "confirmed_count";
-var choropleth_btn = document.getElementById("btn-nb");
-var lisa_btn = document.getElementById("btn-lisa");
-var data_btn = document.getElementById("select-data");
-
-var gda_proxy;
-var state_w = null;
-var county_w = null;
-
-var jsondata = {};
-var centroids = {};
-
-var select_map = null;
-var select_id = null;
-var select_date = null;
-var select_variable = null;
-var select_method = null;
-var show_labels = false;
-var select_state_id = -1;
-
-var dates;
-var confirmed_count_data = {};
-var death_count_data = {};
-var population_data = {};
-var fatality_data = {};
-var lisa_data = {};
-
-var current_view = null;
-
-// functions
-var colorScale;
-var getFillColor;
-var getLineColor;
-
-function OnViewChange(view) {
-    current_view = view.viewState;
-}
-
-const deckgl = new DeckGL({
-    mapboxApiAccessToken: 'pk.eyJ1IjoibGl4dW45MTAiLCJhIjoiY2locXMxcWFqMDAwenQ0bTFhaTZmbnRwaiJ9.VRNeNnyb96Eo-CorkJmIqg',
-    mapStyle: 'mapbox://styles/mapbox/dark-v9',
-    latitude: 32.850033,
-    longitude: -86.6500523,
-    zoom: 3.5,
-    maxZoom: 18,
-    pitch: 0,
-    controller: true,
-    onViewStateChange: OnViewChange,
-    layers: []
-});
-
-var mapbox = deckgl.getMapboxMap();
-mapbox.addControl(new mapboxgl.NavigationControl(), 'top-left');
-
-
-mapbox.on('zoomend', () => {
-    const currentZoom = mapbox.getZoom();
-    let lat = current_view == null? deckgl.viewState.latitude : current_view.latitude;
-    let lon = current_view == null? deckgl.viewState.longitude : current_view.longitude;
-    deckgl.setProps({
-        viewState : {
-            zoom: currentZoom,
-            latitude: lat,
-            longitude: lon
-        }
-    });
-});
 
 function createMap(data) {
     data = initFeatureSelected(data);
@@ -413,7 +389,7 @@ function createMap(data) {
         new GeoJsonLayer({
             id : 'map-layer',
             data: data,
-            opacity: 0.5,
+            opacity: 0.4,
             stroked: true,
             filled: true,
             wireframe: true,
@@ -442,7 +418,7 @@ function createMap(data) {
         layers.push(
         new GeoJsonLayer({
             data: jsondata['state'],
-            opacity: 0.5,
+            opacity: 0.4,
             stroked: true,
             filled: false,
             lineWidthScale: 1,
@@ -823,17 +799,6 @@ function OnLISAClick(evt) {
     }
 }
 
-function loadScript(url) {
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = url;
-    const head = document.querySelector('head');
-    head.appendChild(script);
-    return new Promise(resolve => {
-      script.onload = resolve;
-    });
-  }
-
 // MAIN ENTRY
 var Module = { onRuntimeInitialized: function() {
     gda_proxy = new GeodaProxy();
@@ -1004,7 +969,7 @@ function addTrendLine(data, title) {
     svg.append("g")
         .attr("transform", "translate(0," + (height) + ")")
         .call(xAxis.tickValues(xLabels.filter(function(d, i) { 
-            if (i % 3 == 0)
+            if (i % 2 == 0)
                 return d;
             })).tickFormat(function(e){
                 return e.substring(5);
@@ -1019,11 +984,7 @@ function addTrendLine(data, title) {
     svg.append("g")
         .attr("transform", "translate(" + (margin.left) + ",0)")
         .attr("class", "yaxis")
-        .call(yAxis.tickFormat(function(e,i) {
-            if(i %2 == 1 || Math.floor(e) != e) 
-                return; 
-            return d3.format(",")(e);
-        }));
+        .call(yAxis.tickFormat(function(e){if(Math.floor(e) != e) return; return e;}));
 
 
     // chart title
@@ -1121,7 +1082,7 @@ function createTimeSlider(geojson)
 
     var width = 326,
         height = 180,
-        padding = 28;
+        padding = 26;
 
     var svg = d3.select("#slider-svg")
         .append("svg")
@@ -1154,7 +1115,7 @@ function createTimeSlider(geojson)
         .enter()
         .append("rect")
         .attr("x", d => xScale(d.date))
-        .attr("width", xScale.bandwidth() - 1)
+        .attr("width", xScale.bandwidth())
         .attr("y", d => yScale(d.confirmedcases))
         .attr("height", d => height - padding - yScale(d.confirmedcases))
         .text("1")
@@ -1169,11 +1130,7 @@ function createTimeSlider(geojson)
     var gY = svg.append("g")
         .attr("class", "axis--y")
         .attr("transform", "translate(" + (width) + ",0)")
-        .call(yAxis.tickFormat(function(e,i){
-            if(i %2 == 1) 
-                return; 
-            return d3.format(",")(e);
-        }));
+        .call(yAxis);
 
     svg.append("text")
         .attr("transform", "translate(" + (width/2) + "," + 0 + ")")
@@ -1188,7 +1145,7 @@ function createTimeSlider(geojson)
         select_date = dates[currentValue-1];
         console.log(select_date);
 
-        document.getElementById('time-container').innerText = select_date;
+        document.getElementById('time-container').innerText = 'Confirmed cases' + select_date;
         var xLabels = getDatesFromGeojson(geojson); 
         xScale.domain(xLabels);
 
@@ -1247,16 +1204,5 @@ function OnShowLabels(el)
 function OnShowTime(el) 
 {
     let disp = el.checked ? 'block' : 'none';
-    document.getElementById('time-container').parentElement.style.display = disp;
-}
-
-function collapse(el)
-{
-    if (document.getElementById("toolbox").classList.contains("collapse")) {
-        document.getElementById('toolbox').classList.remove("collapse");
-        el.src="collapse.png";
-    } else {
-        document.getElementById('toolbox').classList.add("collapse");
-        el.src="expand.png";
-    }
+    document.getElementById('time-container').style.display = disp;
 }
